@@ -96,6 +96,7 @@ sys_uptime(void)
   return xticks;
 }
 
+//trace系统调用只是给mask设置相应的值。
 uint64
 sys_trace(void)
 {
