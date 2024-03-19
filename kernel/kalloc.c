@@ -85,7 +85,7 @@ kalloc(void)
 }
 
 uint64
-free_men(void){
+free_mem(void){
   struct run *r;
   uint64 num = 0;
   acquire(&kmem.lock);  // 获取对内存管理器的访问锁
