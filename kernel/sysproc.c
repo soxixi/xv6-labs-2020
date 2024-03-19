@@ -95,3 +95,15 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_uptime(void)
+{
+  int mask;
+  // RISCV 的 C 规范是把返回值放在 a0 中
+  //取 a0 寄存器中的值返回给 mask
+  if(argint(0, &mask) < 0)
+    return -1;
+  myproc()->mask = mask;
+  return 0;
+}
