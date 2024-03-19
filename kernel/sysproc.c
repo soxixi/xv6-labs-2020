@@ -95,16 +95,3 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
-
-//trace系统调用只是给mask设置相应的值。
-uint64
-sys_trace(void)
-{
-  int mask;
-   // 取 a0 寄存器中的值返回给 mask
-  if(argint(0, &mask) < 0)
-    return -1;
-  myproc()->mask = mask;
-  return 0;
-
-}
