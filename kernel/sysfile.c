@@ -18,14 +18,20 @@
 
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
+// argfd函数：检查并返回指定参数n对应的文件描述符和文件结构体
+// n: 参数位置
+// pfd: 指向要返回的文件描述符的指针
+// pf: 指向要返回的文件结构体的指针
+// 返回值: 成功返回0，失败返回-1
 static int
 argfd(int n, int *pfd, struct file **pf)
 {
-  int fd;
-  struct file *f;
+  int fd; // 文件描述符
+  struct file *f; // 文件结构体指针
 
-  if(argint(n, &fd) < 0)
+  if(argint(n, &fd) < 0)  // 从参数n中获取文件描述符，失败则返回-1
     return -1;
+     // 检查文件描述符的有效性，无效则返回-1
   if(fd < 0 || fd >= NOFILE || (f=myproc()->ofile[fd]) == 0)
     return -1;
   if(pfd)
@@ -104,15 +110,24 @@ sys_close(void)
   return 0;
 }
 
+/**
+ * sys_fstat - 获取指定文件的状态信息
+ * 
+ * 该函数通过文件描述符获取文件的状态信息，并将这些信息存储到用户提供的stat结构体中。
+ */
 uint64
 sys_fstat(void)
 {
-  struct file *f;
-  uint64 st; // user pointer to struct stat
+  struct file *f;  // 指向要获取状态的文件结构体指针
+  uint64 st; // user pointer to struct stat 
+  // 用户提供的用于存储文件状态信息的struct stat的指针
 
+  //验证参数：首先确保提供的文件描述符有效，并获取对应的文件结构体指针
+  // 然后确保用户提供了有效的struct stat的地址
   if(argfd(0, 0, &f) < 0 || argaddr(1, &st) < 0)
     return -1;
   return filestat(f, st);
+    // 调用filestat函数，用文件指针f和用户提供的地址st来获取并存储文件的状态信息
 }
 
 // Create the path new as a link to the same inode as old.

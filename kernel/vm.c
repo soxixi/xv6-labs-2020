@@ -357,18 +357,20 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   uint64 n, va0, pa0;
 
   while(len > 0){
-    va0 = PGROUNDDOWN(dstva);
+    va0 = PGROUNDDOWN(dstva); 
+    //将dstva（目标虚拟地址）向下取整到页的起始地址，将结果赋值给va0。
     pa0 = walkaddr(pagetable, va0);
+    //调用walkaddr()函数，传入pagetable（页表）和va0作为参数，该函数根据页表和虚拟地址va0，返回相应的物理地址，并将结果赋值给pa0。
     if(pa0 == 0)
-      return -1;
-    n = PGSIZE - (dstva - va0);
+      return -1;// 如果获取的物理地址为0，则失败返回
+    n = PGSIZE - (dstva - va0);// 计算当前页剩余可用空间大小
     if(n > len)
-      n = len;
-    memmove((void *)(pa0 + (dstva - va0)), src, n);
-
-    len -= n;
-    src += n;
-    dstva = va0 + PGSIZE;
+      n = len; // 如果剩余空间大于需要复制的数据长度，调整n的值为数据长度
+    memmove((void *)(pa0 + (dstva - va0)), src, n);// 将数据从源地址复制到目标物理地址
+  
+    len -= n; // 更新剩余要复制的数据长度
+    src += n; // 更新源数据指针的位置
+    dstva = va0 + PGSIZE; // 更新目标虚拟地址为下一页的起始地址
   }
   return 0;
 }

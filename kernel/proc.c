@@ -21,6 +21,21 @@ static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
 
+uint64
+nproc(void){
+  struct proc *p; // 定义一个指向进程结构体的指针
+  uint64 num = 0; 
+  for(p = proc;p< &proc[NPROC];p++){
+    acquire(&p->lock); // 获取进程的锁，以确保对进程状态的原子操作
+    if(p->state != UNUSED){  // 如果进程状态不是未使用，则计数加一
+      num++;
+    }
+    release(&p->lock); // 释放进程的锁
+  }
+  return num;
+  
+}
+
 // initialize the proc table at boot time.
 void
 procinit(void)

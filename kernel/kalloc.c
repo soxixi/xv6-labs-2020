@@ -43,8 +43,11 @@ freerange(void *pa_start, void *pa_end)
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
+//kfree函数中把从end(内核后的第一个地址)到PHYSTOP(KERNBASE + 128*1024*1024)之间的物理空间以PGSIZE为单位全部初始化为1，
+//然后每次初始化一个PGSIZE就把这个页挂在了kmem.freelist上，所以kmem.freelist永远指向最后一个可用页。
+
 void
-kfree(void *pa)
+kfree(void *pa)//传入参数pa为待释放的内存页面的起始地址
 {
   struct run *r;
 
@@ -52,7 +55,7 @@ kfree(void *pa)
     panic("kfree");
 
   // Fill with junk to catch dangling refs.
-  memset(pa, 1, PGSIZE);
+  memset(pa, 1, PGSIZE);//将该页面用垃圾数据填充
 
   r = (struct run*)pa;
 
@@ -79,4 +82,20 @@ kalloc(void)
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+uint64
+free_men(void){
+  struct run *r;
+  uint64 num = 0;
+  acquire(&kmem.lock);  // 获取对内存管理器的访问锁
+  r = kmem.freelist;
+  while (r)
+  {
+    /* code */
+    num++;
+    r = r->next;
+  }
+  release(&kmem.lock); // 释放访问锁
+  return num*PGSIZE;
 }

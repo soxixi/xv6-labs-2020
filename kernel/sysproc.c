@@ -6,6 +6,7 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "sysinfo.h"
 
 uint64
 sys_exit(void)
@@ -95,6 +96,11 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+/**
+ * sys_trace - 修改当前进程的跟踪掩码
+ * 该函数用于接收一个整数参数mask，并将其设置为当前进程的跟踪掩码。
+ * 如果传入的参数获取失败，则函数返回-1；否则，更新进程的掩码并返回0。
+ */
 
 uint64
 sys_trace(void)
@@ -106,5 +112,19 @@ sys_trace(void)
   
   // 把 mask 传给现有进程的 mask
   myproc()->mask = mask;
+  return 0;
+}
+
+uint64
+sys_sysinfo(void){
+  uint64 addr;  // 用于存储从用户空间接收的地址
+  struct sysinfo info; // 用于存储系统信息
+  struct proc *p = myproc();
+  if(argaddr(0,&addr)<0) // 尝试获取用户空间传递的地址，如果失败则返回-1
+    return -1;
+  info.freemem = free_mem();
+  info.nproc = nproc();
+  if(copyout(p->pagetable, addr, (char *)&info, sizeof(info)) < 0)
+    return -1;
   return 0;
 }

@@ -84,21 +84,27 @@ fileclose(struct file *f)
 
 // Get metadata about file f.
 // addr is a user virtual address, pointing to a struct stat.
+/*
+功能描述：获取文件的状态信息并将其复制到用户空间指定的地址。
+ * 参数说明：
+ *    - f：指向当前文件的指针。
+ *    - addr：用户空间中用于接收文件状态信息的地址。
+*/
 int
 filestat(struct file *f, uint64 addr)
 {
-  struct proc *p = myproc();
-  struct stat st;
+  struct proc *p = myproc(); // 获取当前进程的结构体指针
+  struct stat st; // 定义用于存储文件状态信息的结构体
   
-  if(f->type == FD_INODE || f->type == FD_DEVICE){
-    ilock(f->ip);
-    stati(f->ip, &st);
-    iunlock(f->ip);
-    if(copyout(p->pagetable, addr, (char *)&st, sizeof(st)) < 0)
-      return -1;
-    return 0;
+  if(f->type == FD_INODE || f->type == FD_DEVICE){  // 如果文件类型是常规文件或设备文件
+    ilock(f->ip);  // 对文件节点加锁
+    stati(f->ip, &st);  // 获取文件状态信息
+    iunlock(f->ip); // 对文件节点解锁
+    if(copyout(p->pagetable, addr, (char *)&st, sizeof(st)) < 0)  // 将文件状态信息复制到用户空间
+      return -1; 
+    return 0; // 复制成功，返回0
   }
-  return -1;
+  return -1;// 文件类型不支持，返回-1
 }
 
 // Read from file f.

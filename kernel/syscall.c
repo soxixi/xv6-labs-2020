@@ -54,10 +54,15 @@ argraw(int n)
 }
 
 // Fetch the nth 32-bit system call argument.
+/**
+ * 将命令行参数中的第n个参数解析为整数并存储到指定的指针位置。
+ * @param n 指定要解析的命令行参数的索引。
+ * @param ip 用于存储解析后整数的指针地址。
+ */
 int
 argint(int n, int *ip)
 {
-  *ip = argraw(n);
+  *ip = argraw(n);// 解析第n个参数为整数并存储到ip指向的位置
   return 0;
 }
 
@@ -67,7 +72,7 @@ argint(int n, int *ip)
 int
 argaddr(int n, uint64 *ip)
 {
-  *ip = argraw(n);
+  *ip = argraw(n); // 将第n个参数的原始地址存储到ip指向的位置
   return 0;
 }
 
@@ -105,6 +110,7 @@ extern uint64 sys_wait(void);
 extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
 extern uint64 sys_trace(void);
+extern uint64 sys_sysinfo(void);
 
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -129,6 +135,7 @@ static uint64 (*syscalls[])(void) = {
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
 [SYS_trace]   sys_trace,
+[SYS_sysinfo]   sys_sysinfo,
 };
 
 static char *syscall_names[] = {
@@ -148,7 +155,7 @@ syscall(void)
   num = p->trapframe->a7;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     p->trapframe->a0 = syscalls[num]();
-    // 下面是添加的部分
+    // 若该系统调用号在当前进程的 mask 中被设置，则打印系统调用信息
     if((1 << num) & p->mask) {
       printf("%d: syscall %s -> %d\n", p->pid, syscall_names[num], p->trapframe->a0);
     }
