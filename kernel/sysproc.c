@@ -97,7 +97,7 @@ sys_uptime(void)
 }
 
 uint64
-sys_uptime(void)
+sys_trace(void)
 {
   int mask;
   // RISCV 的 C 规范是把返回值放在 a0 中
