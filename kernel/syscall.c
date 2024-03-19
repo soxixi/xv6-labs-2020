@@ -149,7 +149,7 @@ syscall(void)
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     p->trapframe->a0 = syscalls[num]();
     // 下面是添加的部分
-    if((1 << num) == p->mask) {
+    if((1 << num) & p->mask) {
       printf("%d: syscall %s -> %d\n", p->pid, syscall_names[num], p->trapframe->a0);
     }
   } else {
