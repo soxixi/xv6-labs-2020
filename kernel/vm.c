@@ -450,7 +450,7 @@ void vmp(pagetable_t pagetable,uint64 level){
         printf(" ..");
       }
       uint64 child = PTE2PA(pte);
-      printf("%d: pte &p pa %p\n",i,pte,PTE2PA(pte)); 
+      printf("%d: pte %p pa %p\n",i,pte,PTE2PA(pte)); 
       //%p以十六进制整数方式输出指针的值，附加前缀0x。
       if((pte & (PTE_R | PTE_W | PTE_X)) == 0){
         vmp((pagetable_t)child,level+1);
