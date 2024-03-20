@@ -34,12 +34,7 @@ procinit(void)
       // Allocate a page for the process's kernel stack.
       // Map it high in memory, followed by an invalid
       // guard page.
-      char *pa = kalloc();
-      if(pa == 0)
-        panic("kalloc");
-      uint64 va = KSTACK((int) (p - proc));
-      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-      p->kstack = va;
+     
   }
   kvminithart();
 }
@@ -96,7 +91,7 @@ allocproc(void)
 
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
-    if(p->state == UNUSED) {
+    if(p->state == UNUSED) { //如果是UNUSED，则为进程分配内存并初始化在内核中运行所需要的状态。
       goto found;
     } else {
       release(&p->lock);
@@ -120,6 +115,18 @@ found:
     release(&p->lock);
     return 0;
   }
+  p->proc_kernel_pegetable = ukvminit();
+  if(p->proc_kernel_pegetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+  char *pa = kalloc();
+  if(pa == 0)
+    panic("kalloc");
+  uint64 va = KSTACK((int) (p - proc));
+  ukvmmap(p->proc_kernel_pegetable,va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  p->kstack = va;
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -130,25 +137,56 @@ found:
   return p;
 }
 
-// free a proc structure and the data hanging from it,
-// including user pages.
-// p->lock must be held.
+void
+free_proc_kpagetable(pagetable_t pagetable)
+{
+  // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      free_proc_kpagetable((pagetable_t)child);
+      pagetable[i] = 0;
+    }
+  }
+  kfree((void*)pagetable);
+}
+
+// free a proc structure and the data hanging from it, 释放一个进程结构及其相关的数据
+// including user pages. 包括用户页面
+// p->lock must be held. 必须持有p->lock
 static void
 freeproc(struct proc *p)
 {
-  if(p->trapframe)
+  if(p->trapframe) // 释放进程的trapframe，如果存在的话
     kfree((void*)p->trapframe);
   p->trapframe = 0;
-  if(p->pagetable)
+  if(p->pagetable)  // 释放进程的页表，如果存在的话
     proc_freepagetable(p->pagetable, p->sz);
+  if(p->kstack){
+    pte_t *pte = walk(p->proc_kernel_pegetable,p->kstack,0);
+    // pte_t * walk(pagetable_t pagetable, uint64 va, int alloc) 遍历页表，查找指定虚拟地址对应的页表项，并根据需要分配页表。  
+    //va虚拟地址 返回指向最终页表项的指针。
+    if (pte == 0)
+      panic("freeproc : kstack");
+    kfree((void*)PTE2PA(*pte));
+    //void kfree(void *pa) 释放由kalloc()分配的物理内存页。
+  }
+  p->kstack = 0;
+
+  // 删除kernel pagetable
+  if (p->proc_kernel_pegetable) 
+    free_proc_kpagetable(p->proc_kernel_pegetable);
+
   p->pagetable = 0;
-  p->sz = 0;
-  p->pid = 0;
+  p->sz = 0; // 清零进程的大小
+  p->pid = 0;   // 重置进程的标识符和父进程
   p->parent = 0;
-  p->name[0] = 0;
-  p->chan = 0;
+  p->name[0] = 0;   // 清空进程名称
+  p->chan = 0;   // 重置等待通道和是否被杀掉的标志
   p->killed = 0;
-  p->xstate = 0;
+  p->xstate = 0; // 重置扩展状态，并将进程状态标记为未使用
   p->state = UNUSED;
 }
 
@@ -186,13 +224,13 @@ proc_pagetable(struct proc *p)
 }
 
 // Free a process's page table, and free the
-// physical memory it refers to.
+// physical memory it refers to. 释放一个进程的页表，并释放它所引用的物理内存。
 void
 proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
-  uvmfree(pagetable, sz);
+  uvmfree(pagetable, sz); 
 }
 
 // a user program that calls exec("/init")
@@ -473,10 +511,14 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        //调度进程
+        w_satp(MAKE_SATP(p->proc_kernel_pegetable)); //在切换任务前，将用户内核页表替换到stap寄存器中
+        sfence_vma();// 清除快表缓存
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
+        kvminithart(); //该进程执行结束后，将SATP寄存器的值设置为全局内核页表地址
         c->proc = 0;
 
         found = 1;
