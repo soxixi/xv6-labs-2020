@@ -275,18 +275,21 @@ void
 freewalk(pagetable_t pagetable)
 {
   // there are 2^9 = 512 PTEs in a page table.
+  //遍历当前level页表中的PTE
   for(int i = 0; i < 512; i++){
     pte_t pte = pagetable[i];
+    // 合法页面 并且 不是第三级页表（不可读且不可写且不可执行 即是 根页表或第二级页表）
+		// 非合法页面不会分配物理内存，因此不必进入下一级页表
     if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
       // this PTE points to a lower-level page table.
-      uint64 child = PTE2PA(pte);
-      freewalk((pagetable_t)child);
-      pagetable[i] = 0;
-    } else if(pte & PTE_V){
+      uint64 child = PTE2PA(pte);// 此PTE指向一个更低级的页表 PTE2PA就是根据页表项映射得到物理地址
+      freewalk((pagetable_t)child); // 递归释放这个更低级的页表
+      pagetable[i] = 0;// 清空当前PTE，以释放内存
+    } else if(pte & PTE_V){  // 如果发现有效的叶子节点，触发panic
       panic("freewalk: leaf");
     }
   }
-  kfree((void*)pagetable);
+  kfree((void*)pagetable); // 实际释放页表动作
 }
 
 // Free user memory pages,
@@ -439,4 +442,26 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+void vmp(pagetable_t pagetable,uint64 level){
+  for(int i = 0; i<512 ;i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V){
+      printf("..");
+      for(int k = 0; k < level;k++){
+        printf(" ..");
+      }
+      uint64 child = PTE2PA(pte);
+      printf("%d: pte &p pa %p\n",i,pte,PTE2PA(pte)); 
+      //%p以十六进制整数方式输出指针的值，附加前缀0x。
+      if((pte & (PTE_R | PTE_W | PTE_X)) == 0){
+        vmp((pagetable_t)child,level+1);
+      }
+    }
+  }
+} 
+void vmprint(pagetable_t pagetable){
+  printf("page table %p\n",pagetable);
+  vmp(pagetable,0);
 }
