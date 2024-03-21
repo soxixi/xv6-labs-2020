@@ -419,14 +419,14 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 // begin - 复制的起始地址
 // end - 复制的结束地址
 int
-u2kvmcopy(pagetable_t old, pagetable_t new, uint64 begin, uint64 end)
+u2kvmcopy(pagetable_t old, pagetable_t new, uint64 start, uint64 end)
 {
   pte_t *pte;
   uint64 pa, i;
   uint flags;
 
   // 遍历指定地址范围内的每个页面
-  for(i = PGROUNDDOWN(begin); i < end; i += PGSIZE){
+   for(i=PGROUNDUP(start); i<end; i+=PGSIZE){
      // 在源页表中查找当前页面的页表项
     if((pte = walk(old, i, 0)) == 0)
       panic("u2kvmcopy: pte should exist");
@@ -437,16 +437,16 @@ u2kvmcopy(pagetable_t old, pagetable_t new, uint64 begin, uint64 end)
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte) & (~PTE_U);//CPU在内核模式时不能方位设置PTE_U的页
      // 在目标页表中设置相应的页表项，复制物理地址和标志位，但不清除用户访问权限
-    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
+    if(mappages(new, i, PGSIZE, pa, flags) != 0)
      // int mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
      // 为从虚拟地址va开始的一系列地址创建页表项（PTE），使其映射到从物理地址pa开始的一系列地址。
       goto err;
-    }
+    
   }
   return 0;
 
  err:
-  uvmunmap(new, begin, (i-begin) / PGSIZE, 0);   // 发生错误时，清理并返回-1
+  uvmunmap(new, start, (i-start)/PGSIZE, 0);   // 发生错误时，清理并返回-1
   return -1;
 
 }

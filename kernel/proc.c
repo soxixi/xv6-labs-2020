@@ -332,13 +332,13 @@ fork(void)
   }
   np->sz = p->sz;
 
-  np->parent = p;
+ 
   if(u2kvmcopy(np->pagetable,np->proc_kernel_pegetable,0,np->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
   }
-
+  np->parent = p;
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
