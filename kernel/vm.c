@@ -421,7 +421,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 int
 u2kvmcopy(pagetable_t old, pagetable_t new, uint64 begin, uint64 end)
 {
-  pte_t *pte, *newPte;
+  pte_t *pte;
   uint64 pa, i;
   uint flags;
 
