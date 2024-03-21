@@ -193,6 +193,7 @@ kvmpa(uint64 va)
 
 // Create PTEs for virtual addresses starting at va that refer to
 // physical addresses starting at pa. va and size might not
+// 为从虚拟地址va开始的一系列地址创建页表项（PTE），使其映射到从物理地址pa开始的一系列地址。
 // be page-aligned. Returns 0 on success, -1 if walk() couldn't
 // allocate a needed page-table page.
 int
@@ -357,6 +358,8 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 // physical memory.
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
+// 将父进程的页表中的内存复制到子进程的页表中。
+// 复制页表和物理内存。
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
@@ -365,17 +368,24 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   uint flags;
   char *mem;
 
-  for(i = 0; i < sz; i += PGSIZE){
-    if((pte = walk(old, i, 0)) == 0)
+  for(i = 0; i < sz; i += PGSIZE){ 
+  // 遍历地址空间，将父进程的页复制到子进程
+  //pte_t * walk(pagetable_t pagetable, uint64 va, int alloc) 
+  //遍历页表，查找指定虚拟地址对应的页表项，并根据需要分配页表。
+    if((pte = walk(old, i, 0)) == 0)// 查找当前页的页表项
       panic("uvmcopy: pte should exist");
-    if((*pte & PTE_V) == 0)
+    if((*pte & PTE_V) == 0)   // 确保页表项指示的页面在物理内存中存在
       panic("uvmcopy: page not present");
-    pa = PTE2PA(*pte);
+    pa = PTE2PA(*pte); 
     flags = PTE_FLAGS(*pte);
+       // 为新进程分配内存并复制页面内容
     if((mem = kalloc()) == 0)
       goto err;
-    memmove(mem, (char*)pa, PGSIZE);
+    memmove(mem, (char*)pa, PGSIZE); //将pa赋值到mem
+    // 在新进程的页表中映射刚分配的页面 
     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+     // int mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+     // 为从虚拟地址va开始的一系列地址创建页表项（PTE），使其映射到从物理地址pa开始的一系列地址。
       kfree(mem);
       goto err;
     }
@@ -383,9 +393,50 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   return 0;
 
  err:
-  uvmunmap(new, 0, i / PGSIZE, 1);
+  uvmunmap(new, 0, i / PGSIZE, 1);   // 发生错误时，清理并返回-1
   return -1;
 }
+
+//将用户态页表塞到内核态页表中
+//将用户态页表中的页面复制到内核态页表中，但不涉及物理内存的拷贝
+// 参数:
+// old - 指向源用户态页表的指针
+// new - 指向目标内核态页表的指针
+// begin - 复制的起始地址
+// end - 复制的结束地址
+int
+u2kvmcopy(pagetable_t old, pagetable_t new, uint64 begin, uint64 end)
+{
+  pte_t *pte, *newPte;
+  uint64 pa, i;
+  uint flags;
+
+  // 遍历指定地址范围内的每个页面
+  for(i = PGROUNDDOWN(begin); i < end; i += PGSIZE){
+     // 在源页表中查找当前页面的页表项
+    if((pte = walk(old, i, 0)) == 0)
+      panic("u2kvmcopy: pte should exist");
+      // 在目标页表中查找当前页面的页表项，如果不存在则分配
+    if((newPte = walk(new, i, 1)) == 0)
+      panic("u2kvmcopy:page not present");
+    // 从源页表项中获取物理地址和标志位
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte) & (~PTE_U);//CPU在内核模式时不能方位设置PTE_U的页
+     // 在目标页表中设置相应的页表项，复制物理地址和标志位，但不清除用户访问权限
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
+     // int mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+     // 为从虚拟地址va开始的一系列地址创建页表项（PTE），使其映射到从物理地址pa开始的一系列地址。
+      goto err;
+    }
+  }
+  return 0;
+
+ err:
+  uvmunmap(new, begin, (i-begin) / PGSIZE, 1);   // 发生错误时，清理并返回-1
+  return -1;
+
+}
+
 
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
@@ -425,72 +476,76 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   return 0;
 }
 
-// Copy from user to kernel.
+// Copy from user to kernel. 从用户空间复制数据到内核空间。
 // Copy len bytes to dst from virtual address srcva in a given page table.
+// 使用给定的页表，将srcva虚拟地址开始的len字节数据复制到dst。
 // Return 0 on success, -1 on error.
 int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
-  uint64 n, va0, pa0;
+  // uint64 n, va0, pa0;
 
-  while(len > 0){
-    va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
-    n = PGSIZE - (srcva - va0);
-    if(n > len)
-      n = len;
-    memmove(dst, (void *)(pa0 + (srcva - va0)), n);
+  // while(len > 0){  // 循环处理，直到复制完所有指定字节
+  //   va0 = PGROUNDDOWN(srcva); // 将源虚拟地址向下对齐到页边界
+  //   pa0 = walkaddr(pagetable, va0); // 根据页表和虚拟地址获取物理地址
+  //   if(pa0 == 0)
+  //     return -1;
+  //   n = PGSIZE - (srcva - va0);  // 计算当前页剩余空间大小
+  //   if(n > len)
+  //     n = len; // 如果剩余空间大于需要复制的字节数，则调整n的值
+  //   memmove(dst, (void *)(pa0 + (srcva - va0)), n);  // 将数据从物理地址复制到dst
 
-    len -= n;
-    dst += n;
-    srcva = va0 + PGSIZE;
-  }
-  return 0;
+  //   len -= n; // 更新剩余待复制字节数 
+  //   dst += n;  // 更新剩余待复制字节数
+  //   srcva = va0 + PGSIZE; // 更新源虚拟地址指针到下一页
+  // }
+  // return 0;
+  return copyin_new(pagetable, dst, srcva, len);
 }
 
-// Copy a null-terminated string from user to kernel.
+// Copy a null-terminated string from user to kernel. // 将用户空间的零终止字符串复制到内核空间。
 // Copy bytes to dst from virtual address srcva in a given page table,
-// until a '\0', or max.
+//通过给定的页表，从虚拟地址srcva开始复制字节到dst，直到遇到'\0'或者达到最大长度max。
+//until a '\0', or max.
 // Return 0 on success, -1 on error.
 int
 copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 {
-  uint64 n, va0, pa0;
-  int got_null = 0;
+  // uint64 n, va0, pa0;
+  // int got_null = 0;   // 标记是否已经遇到零字符
+  //  // 当未遇到零字符且还有剩余复制长度时循环
+  // while(got_null == 0 && max > 0){
+  //   va0 = PGROUNDDOWN(srcva); // 对源虚拟地址进行页面对齐
+  //   pa0 = walkaddr(pagetable, va0); // 根据页表获取对齐后的虚拟地址对应的物理地址
+  //   if(pa0 == 0)
+  //     return -1;
+  //   n = PGSIZE - (srcva - va0); // 计算剩余在当前页面内的字节数
+  //   if(n > max)
+  //     n = max; // 如果剩余字节数大于最大长度，将n设置为最大长度
 
-  while(got_null == 0 && max > 0){
-    va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
-    n = PGSIZE - (srcva - va0);
-    if(n > max)
-      n = max;
+  //   char *p = (char *) (pa0 + (srcva - va0));   // 计算物理地址的具体地址
+  //   while(n > 0){
+  //     if(*p == '\0'){ 
+  //       *dst = '\0'; // 在目标地址处也添加零字符，表示字符串结束
+  //       got_null = 1;  // 标记已找到零字符
+  //       break;
+  //     } else {
+  //       *dst = *p; // 复制字符
+  //     }
+  //     --n;  // 减少剩余复制字节数
+  //     --max;  // 减少剩余最大长度
+  //     p++;  // 减少剩余最大长度
+  //     dst++; // 移动到目标地址的下一个位置
+  //   }
 
-    char *p = (char *) (pa0 + (srcva - va0));
-    while(n > 0){
-      if(*p == '\0'){
-        *dst = '\0';
-        got_null = 1;
-        break;
-      } else {
-        *dst = *p;
-      }
-      --n;
-      --max;
-      p++;
-      dst++;
-    }
-
-    srcva = va0 + PGSIZE;
-  }
-  if(got_null){
-    return 0;
-  } else {
-    return -1;
-  }
+  //   srcva = va0 + PGSIZE; // 为下一次循环准备，更新源虚拟地址
+  // }
+  // if(got_null){   // 根据是否找到零字符来决定返回值
+  //   return 0;
+  // } else {
+  //   return -1;
+  // }
+  return copyinstr_new(pagetable, dst, srcva, max);
 }
 
 void vmp(pagetable_t pagetable,uint64 level){

@@ -183,6 +183,10 @@ void            vmp(pagetable_t, uint64);
 void            vmprint(pagetable_t);
 pagetable_t     ukvminit();
 void            ukvmmap(pagetable_t, uint64, uint64, uint64, int);
+int             copyin_new(pagetable_t , char , uint64 , uint64 );
+int             copyinstr_new(pagetable_t , char , uint64 , uint64 max);
+int             uvmcopy_not_physical(pagetable_t , pagetable_t , uint64 , uint64 );
+
 
 
 // plic.c

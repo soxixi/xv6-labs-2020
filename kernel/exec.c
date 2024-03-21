@@ -111,11 +111,17 @@ exec(char *path, char **argv)
   // Commit to the user image.
   oldpagetable = p->pagetable;
   p->pagetable = pagetable;
+  
   p->sz = sz;
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
-  
+  /** 清除内核页表中对用户态页表的旧映射 */
+  uvmunmap(p->proc_kernel_pegetable, 0, PGROUNDDOWN(p->sz)/PGSIZE, 0);
+  /** 在替换原用户页表之后，将新用户页表塞进内核页表中 */
+  if(u2kvmcopy(p->pagetable, p->proc_kernel_pegetable, 0, sz)){
+    goto bad;
+  }
   if(p->pid == 1){
     vmprint(p->pagetable);
   }

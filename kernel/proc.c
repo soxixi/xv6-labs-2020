@@ -34,6 +34,14 @@ procinit(void)
       // Allocate a page for the process's kernel stack.
       // Map it high in memory, followed by an invalid
       // guard page.
+
+      // char *pa = kalloc();
+      // if(pa == 0)
+      //   panic("kalloc");
+      // uint64 va = KSTACK((int) (p - proc));
+      // kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);   // 将物理内存地址映射到虚拟地址，设置为可读写
+      // p->kstack = va;  // 更新进程的内核栈指针
+
      
   }
   kvminithart();
@@ -121,12 +129,12 @@ found:
     release(&p->lock);
     return 0;
   }
-  char *pa = kalloc();
-  if(pa == 0)
+  char *pa = kalloc();// 分配内核栈
+  if(pa == 0)   // 如果分配失败，则引发panic
     panic("kalloc");
-  uint64 va = KSTACK((int) (p - proc));
-  ukvmmap(p->proc_kernel_pegetable,va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-  p->kstack = va;
+  uint64 va = KSTACK((int) (p - proc));  // 计算内核栈的虚拟地址
+  ukvmmap(p->proc_kernel_pegetable,va, (uint64)pa, PGSIZE, PTE_R | PTE_W); // 将物理内存地址映射到虚拟地址，设置为可读写
+  p->kstack = va;   // 更新进程的内核栈指针
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -137,6 +145,9 @@ found:
   return p;
 }
 
+// 释放进程的二级页表 函数遍历二级页表中的每个页表项（PTE），
+//如果发现该页表项指向一个下级页表并且没有被读、写或执行权限，则递归释放该下级页表，并将当前页表项设置为0。
+//最后，释放整个二级页表。
 void
 free_proc_kpagetable(pagetable_t pagetable)
 {
@@ -152,6 +163,8 @@ free_proc_kpagetable(pagetable_t pagetable)
   }
   kfree((void*)pagetable);
 }
+
+
 
 // free a proc structure and the data hanging from it, 释放一个进程结构及其相关的数据
 // including user pages. 包括用户页面
@@ -258,7 +271,7 @@ userinit(void)
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
-
+  u2kvmcopy(p->pagetable, p->proc_kernel_pegetable, 0, p->sz);
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
   p->trapframe->sp = PGSIZE;  // user stack pointer
@@ -281,12 +294,18 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
+    if(PGROUNDUP(sz+n) >= PLIC)
+      return -1;
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+    if(u2kvmcopy(p->pagetable, p->proc_kernel_pegetable, p->sz, sz) < 0)
+      return -1;
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
+    sz = vmdealloc(p->proc_kernel_pegetable, p->sz, sz, 0);
   }
+
   p->sz = sz;
   return 0;
 }
@@ -314,6 +333,11 @@ fork(void)
   np->sz = p->sz;
 
   np->parent = p;
+  if(u2kvmcopy(np->pagetable,np->proc_kernel_pegetable,0,np->sz) < 0){
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
@@ -503,25 +527,27 @@ scheduler(void)
     intr_on();
     
     int found = 0;
-    for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
+    for(p = proc; p < &proc[NPROC]; p++) {  // 遍历进程数组，寻找一个可运行的进程
+      acquire(&p->lock); // 获取进程锁
+      if(p->state == RUNNABLE) {  // 如果找到可运行的进程，进行调度
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
+        p->state = RUNNING;  // 将进程状态从RUNNABLE改为RUNNING
+        c->proc = p;   // 当前上下文指向这个进程
         //调度进程
         w_satp(MAKE_SATP(p->proc_kernel_pegetable)); //在切换任务前，将用户内核页表替换到stap寄存器中
-        sfence_vma();// 清除快表缓存
-        swtch(&c->context, &p->context);
+        sfence_vma();// 清除快表缓存 刷新当前CPU的TLB
+        swtch(&c->context, &p->context); // 实现进程上下文的切换 当前进程（c）到目标进程（p）的切换
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
-        kvminithart(); //该进程执行结束后，将SATP寄存器的值设置为全局内核页表地址
-        c->proc = 0;
+        //在没有进程运行时使用kernel_pagetable
+        kvminithart(); //该进程执行结束后，将SATP寄存器的值设置为全局内核页表地址 // 重置SATP寄存器，恢复到内核的页表
+        c->proc = 0; // 清除当前上下文的进程指针
 
-        found = 1;
+
+        found = 1; // 标记找到可运行进程并已进行调度
       }
       release(&p->lock);
     }
