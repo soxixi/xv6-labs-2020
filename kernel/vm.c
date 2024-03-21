@@ -431,7 +431,7 @@ u2kvmcopy(pagetable_t old, pagetable_t new, uint64 begin, uint64 end)
     if((pte = walk(old, i, 0)) == 0)
       panic("u2kvmcopy: pte should exist");
       // 在目标页表中查找当前页面的页表项，如果不存在则分配
-    if((newPte = walk(new, i, 1)) == 0)
+    if((*pte & PTE_V) == 0)
       panic("u2kvmcopy:page not present");
     // 从源页表项中获取物理地址和标志位
     pa = PTE2PA(*pte);
