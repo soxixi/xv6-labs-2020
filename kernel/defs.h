@@ -185,7 +185,7 @@ pagetable_t     ukvminit();
 void            ukvmmap(pagetable_t, uint64, uint64, uint64, int);
 int             copyin_new(pagetable_t , char *, uint64 , uint64 );
 int             copyinstr_new(pagetable_t , char * , uint64 , uint64 max);
-int             u2kvmcopy(pagetable_t , pagetable_t , uint64 , uint64 );
+int             uvmcopy_not_physical(pagetable_t , pagetable_t , uint64 , uint64 );
 uint64          vmdealloc(pagetable_t , uint64 , uint64 , int );
 
 

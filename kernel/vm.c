@@ -418,36 +418,58 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 // new - 指向目标内核态页表的指针
 // begin - 复制的起始地址
 // end - 复制的结束地址
+// int
+// u2kvmcopy(pagetable_t old, pagetable_t new, uint64 start, uint64 end)
+// {
+//   pte_t *pte;
+//   uint64 pa, i;
+//   uint flags;
+
+//   // 遍历指定地址范围内的每个页面
+//    for(i=PGROUNDUP(start); i<end; i+=PGSIZE){
+//      // 在源页表中查找当前页面的页表项
+//     if((pte = walk(old, i, 0)) == 0)
+//       panic("u2kvmcopy: pte should exist");
+//       // 在目标页表中查找当前页面的页表项，如果不存在则分配
+//     if((*pte & PTE_V) == 0)
+//       panic("u2kvmcopy:page not present");
+//     // 从源页表项中获取物理地址和标志位
+//     pa = PTE2PA(*pte);
+//     flags = PTE_FLAGS(*pte) & (~PTE_U);//CPU在内核模式时不能方位设置PTE_U的页
+//      // 在目标页表中设置相应的页表项，复制物理地址和标志位，但不清除用户访问权限
+//     if(mappages(new, i, PGSIZE, pa, flags) != 0)
+//      // int mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+//      // 为从虚拟地址va开始的一系列地址创建页表项（PTE），使其映射到从物理地址pa开始的一系列地址。
+//       goto err;
+    
+//   }
+//   return 0;
+
+//  err:
+//   uvmunmap(new, start, (i-start)/PGSIZE, 0);
+//   return -1;
+// }
+
+
 int
-u2kvmcopy(pagetable_t old, pagetable_t new, uint64 start, uint64 end)
+uvmcopy_not_physical(pagetable_t old, pagetable_t new, uint64 begin, uint64 end)
 {
-  pte_t *pte;
+  pte_t *pte, *newPte;
   uint64 pa, i;
   uint flags;
+  char *mem;
 
-  // 遍历指定地址范围内的每个页面
-   for(i=PGROUNDUP(start); i<end; i+=PGSIZE){
-     // 在源页表中查找当前页面的页表项
+  for(i = PGROUNDDOWN(begin); i < end; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
-      panic("u2kvmcopy: pte should exist");
-      // 在目标页表中查找当前页面的页表项，如果不存在则分配
-    if((*pte & PTE_V) == 0)
-      panic("u2kvmcopy:page not present");
-    // 从源页表项中获取物理地址和标志位
+      panic("uvmcopy_not_physical: pte should exist");
+    if((newPte = walk(new, i, 1)) == 0)
+      panic("uvmcopy_not_physical:page not present");
     pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte) & (~PTE_U);//CPU在内核模式时不能方位设置PTE_U的页
-     // 在目标页表中设置相应的页表项，复制物理地址和标志位，但不清除用户访问权限
-    if(mappages(new, i, PGSIZE, pa, flags) != 0)
-     // int mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
-     // 为从虚拟地址va开始的一系列地址创建页表项（PTE），使其映射到从物理地址pa开始的一系列地址。
-      goto err;
-    
+    flags = PTE_FLAGS(*pte) & (~PTE_U);
+
+    *newPte = PA2PTE(pa) | flags;
   }
   return 0;
-
- err:
-  uvmunmap(new, start, (i-start)/PGSIZE, 0);
-  return -1;
 }
 
 

@@ -271,7 +271,8 @@ userinit(void)
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
-  u2kvmcopy(p->pagetable, p->proc_kernel_pegetable, 0, p->sz);
+
+  uvmcopy_not_physical(p->pagetable, p->proc_kernel_pegetable, 0, p->sz);
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
   p->trapframe->sp = PGSIZE;  // user stack pointer
@@ -294,20 +295,28 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
-    if(PGROUNDUP(sz+n) >= PLIC)
+    if(PGROUNDDOWN(sz + n) >= PLIC)
       return -1;
-    if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) 
+    if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
-    if(u2kvmcopy(p->pagetable, p->proc_kernel_pegetable, p->sz, sz) < 0)
-      return -1;
+    }
+    uvmcopy_not_physical(p->pagetable, p->proc_kernel_pegetable, p->sz, sz);
   } else if(n < 0){
-    sz = uvmdealloc(p->pagetable, sz, sz + n);  
-    /** sz已变小，sz <- sz-|n|，此时p->sz > sz */
-    sz = vmdealloc(p->proc_kernel_pegetable, p->sz, sz, 0);
+    sz = uvmdealloc(p->pagetable, sz, sz + n);
+	
+	// 缩小 kernel_pagetable 的相应映射
+    int newsz = p->sz + n;
+    if(PGROUNDDOWN(newsz) < PGROUNDUP(p->sz))
+    {
+      int npages = (PGROUNDUP(p->sz) - PGROUNDUP(newsz)) / PGSIZE;
+      uvmunmap(p->proc_kernel_pegetable, PGROUNDUP(newsz), npages, 0);
+    }
+
   }
   p->sz = sz;
   return 0;
 }
+
 
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
@@ -324,11 +333,13 @@ fork(void)
   }
 
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0 || u2kvmcopy(np->pagetable,np->proc_kernel_pegetable,0,np->sz) < 0){
+    // Copy user memory from parent to child.
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0 || uvmcopy_not_physical(np->pagetable, np->proc_kernel_pegetable, 0, p->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
   }
+
   np->sz = p->sz;
   np->parent = p;
   // copy saved user registers.
