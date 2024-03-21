@@ -119,7 +119,7 @@ exec(char *path, char **argv)
   /** 清除内核页表中对用户态页表的旧映射 */
   uvmunmap(p->proc_kernel_pegetable, 0, PGROUNDDOWN(p->sz)/PGSIZE, 0);
   /** 在替换原用户页表之后，将新用户页表塞进内核页表中 */
-  if(u2kvmcopy(p->pagetable, p->proc_kernel_pegetable, 0, sz)){
+  if(u2kvmcopy(p->pagetable, p->proc_kernel_pegetable, 0, p->sz) < 0){
     goto bad;
   }
   if(p->pid == 1){
