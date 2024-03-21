@@ -446,9 +446,8 @@ u2kvmcopy(pagetable_t old, pagetable_t new, uint64 start, uint64 end)
   return 0;
 
  err:
-  uvmunmap(new, start, (i-start)/PGSIZE, 0);   // 发生错误时，清理并返回-1
+  uvmunmap(new, start, (i-start)/PGSIZE, 0);
   return -1;
-
 }
 
 

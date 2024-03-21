@@ -296,16 +296,15 @@ growproc(int n)
   if(n > 0){
     if(PGROUNDUP(sz+n) >= PLIC)
       return -1;
-    if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
+    if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) 
       return -1;
-    }
     if(u2kvmcopy(p->pagetable, p->proc_kernel_pegetable, p->sz, sz) < 0)
       return -1;
   } else if(n < 0){
-    sz = uvmdealloc(p->pagetable, sz, sz + n);
+    sz = uvmdealloc(p->pagetable, sz, sz + n);  
+    /** sz已变小，sz <- sz-|n|，此时p->sz > sz */
     sz = vmdealloc(p->proc_kernel_pegetable, p->sz, sz, 0);
   }
-
   p->sz = sz;
   return 0;
 }
@@ -325,19 +324,12 @@ fork(void)
   }
 
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0 || u2kvmcopy(np->pagetable,np->proc_kernel_pegetable,0,np->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
   }
   np->sz = p->sz;
-
- 
-  if(u2kvmcopy(np->pagetable,np->proc_kernel_pegetable,0,np->sz) < 0){
-    freeproc(np);
-    release(&np->lock);
-    return -1;
-  }
   np->parent = p;
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
